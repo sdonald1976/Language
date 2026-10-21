@@ -186,6 +186,7 @@ These cases came up while the test sets were being drafted. They are binding for
 | "no one" | head `one` with `:det no` | |
 | Negative determiner "no" | `:det no` only; the clause stays positive (`:pol` is for not/n't/never) | "No zoffin has splooched" |
 | Antecedent candidates | non-pronoun noun phrases only; a possessive pronoun cannot refer to the phrase that contains it | "its tail": its ≠ tail |
+| Pronoun chains | **not represented in v0**: a pronoun whose only antecedent is another pronoun gets `:ref none` (planned for v1) | "She finished her homework": both `:ref none` |
 | Quantifier sequences | repeated `:det` | "all the guests" → `:det all :det the` |
 | "none of the X" | head `none` + `:obl-of` | |
 | Numerals and years used as nouns | numeral as head | "in 1932" → `:obl-in (m3 1932)` |
