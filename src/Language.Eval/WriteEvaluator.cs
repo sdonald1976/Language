@@ -9,7 +9,7 @@ namespace Language.Eval;
 public sealed class WriteScores
 {
     public int Items;
-    public Acc HasAddition = new(), HasForbidden = new(), HasOmission = new(), ActPreserved = new(), Produced = new();
+    public Acc HasAddition = new(), HasForbidden = new(), HasOmission = new(), ActPreserved = new(), Produced = new(), AuxPreserved = new();
     public Prf RoundTrip = new();
     public int AddedTokens, OutputContentTokens;
 
@@ -21,12 +21,13 @@ public sealed class WriteScores
         ["forbidden_word_rate"] = HasForbidden.Value,
         ["omission_rate"] = HasOmission.Value,
         ["sentence_type_preserved"] = ActPreserved.Value,
+        ["tense_aspect_polarity_preserved"] = AuxPreserved.Value,
         ["added_token_share"] = OutputContentTokens == 0 ? 0 : (double)AddedTokens / OutputContentTokens,
         ["round_trip_triple_f1"] = RoundTrip.Gold == 0 ? double.NaN : RoundTrip.F1,
     };
 }
 
-public sealed record WriteItemResult(string Id, string? Output, List<string> Additions, List<string> Omissions, List<string> Forbidden, double? RoundTripF1);
+public sealed record WriteItemResult(string Id, string? Output, List<string> Additions, List<string> Omissions, List<string> Forbidden, double? RoundTripF1, string? AuxMismatch = null);
 
 public static class WriteEvaluator
 {
@@ -85,6 +86,8 @@ public static class WriteEvaluator
             }
 
             var produced = !string.IsNullOrWhiteSpace(output);
+            var auxMismatch = produced ? AuxiliarySignature.Mismatch(Schema.StripRuntime(ir), output!) : null;
+            var auxOk = produced && auxMismatch is null;
             var isQuestion = ir.Head is "ynq" or "whq";
             foreach (var s in targets)
             {
@@ -95,10 +98,11 @@ public static class WriteEvaluator
                 s.HasForbidden.Add(forbidden.Count > 0);
                 s.HasOmission.Add(omissions.Count > 0);
                 s.ActPreserved.Add(output!.TrimEnd().EndsWith('?') == isQuestion);
+                s.AuxPreserved.Add(auxOk);
                 s.AddedTokens += additions.Count;
                 s.OutputContentTokens += contentTokens;
             }
-            results.Add(new WriteItemResult(item.Id, output, additions, omissions, forbidden, rtF1));
+            results.Add(new WriteItemResult(item.Id, output, additions, omissions, forbidden, rtF1, auxMismatch));
         }
         return (slices, results);
     }

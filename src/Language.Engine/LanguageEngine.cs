@@ -28,12 +28,30 @@ public sealed class LanguageEngine(Seq2SeqModel model, LexiconStore? lexicon = n
     {
         var sw = Stopwatch.StartNew();
         var hints = _learner?.Hints(text);
-        var outputs = model.Generate(ModelFormat.ParseInput(text, hints), Beams);
+        var input = ModelFormat.ParseInput(text, hints);
         var tokens = Tokenizer.Tokenize(text);
         var problems = new List<string>();
-        Node? chosen = null;
-        string? raw = outputs.FirstOrDefault().Text;
-        // Take the best-scoring hypothesis that is well formed and invents nothing.
+        // Greedy first (fast); widen to the beam only if the greedy reading fails a check.
+        var (chosen, raw) = Choose(model.Generate(input, 1), tokens, problems, out var fallback);
+        if (chosen is null && Beams > 1)
+            (chosen, raw) = Choose(model.Generate(input, Beams), tokens, problems, out fallback);
+        // A reading that omits content words is used only when nothing better exists, and is reported.
+        if (chosen is null && fallback is not null)
+        {
+            (chosen, raw) = fallback.Value;
+            problems.Add("accepted a reading that omits: " + string.Join(", ", Coverage.Uncovered(chosen!, tokens)));
+        }
+        LearnReport? report = null;
+        if (chosen is not null && _learner is not null && learn) report = _learner.Process(chosen, text, speaker);
+        return new ReadResult(text, chosen, raw, problems, report, sw.Elapsed.TotalMilliseconds);
+    }
+
+    /// <summary>First hypothesis that is well formed, invents nothing and omits nothing. The best one that only
+    /// omits something is returned separately as a last resort.</summary>
+    static (Node? Node, string? Raw) Choose(List<(string Text, double Score)> outputs, List<Token> tokens, List<string> problems,
+        out (Node? Node, string? Raw)? omitting)
+    {
+        omitting = null;
         foreach (var (candidate, _) in outputs)
         {
             if (!Linear.TryParse(candidate, out var node, out var err)) { problems.Add($"malformed: {err}"); continue; }
@@ -41,13 +59,16 @@ public sealed class LanguageEngine(Seq2SeqModel model, LexiconStore? lexicon = n
             if (invalid.Count > 0) { problems.Add("invalid: " + invalid[0]); continue; }
             var anchoring = Anchoring.Compute(node!, tokens);
             if (anchoring.Unanchored.Count > 0) { problems.Add("invented: " + string.Join(", ", anchoring.Unanchored)); continue; }
-            chosen = node;
-            raw = candidate;
-            break;
+            var missing = Coverage.Uncovered(node!, tokens).ToList();
+            if (missing.Count > 0)
+            {
+                problems.Add("omits: " + string.Join(", ", missing));
+                omitting ??= (node, candidate);
+                continue;
+            }
+            return (node, candidate);
         }
-        LearnReport? report = null;
-        if (chosen is not null && _learner is not null && learn) report = _learner.Process(chosen, text, speaker);
-        return new ReadResult(text, chosen, raw, problems, report, sw.Elapsed.TotalMilliseconds);
+        return (null, outputs.FirstOrDefault().Text);
     }
 
     public WriteResult Write(Node ir, bool useLearnedTerms = true)
@@ -75,6 +96,9 @@ public sealed class LanguageEngine(Seq2SeqModel model, LexiconStore? lexicon = n
         var tokens = Tokenizer.Tokenize(text);
         var omitted = Anchoring.Compute(ir, tokens).Unanchored;
         if (omitted.Count > 0) return "omits " + string.Join(", ", omitted);
+        var added = Coverage.Uncovered(ir, tokens).ToList();
+        if (added.Count > 0) return "adds " + string.Join(", ", added);
+        if (AuxiliarySignature.Mismatch(ir, text) is { } aux) return aux;
         var back = model.Generate(ModelFormat.ParseInput(text), 1).FirstOrDefault().Text;
         if (back is null || !Linear.TryParse(back, out var parsed, out _)) return "re-parse failed";
         var a = Normalize(ir);

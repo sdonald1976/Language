@@ -21,6 +21,19 @@ from torch.utils.data import DataLoader
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, get_linear_schedule_with_warmup
 
 
+def save_checkpoint(model, tok, base, path):
+    """Saves model + tokenizer, plus the SentencePiece file (spiece.model) that the C# engine loads."""
+    model.save_pretrained(path)
+    tok.save_pretrained(path)
+    with open(os.path.join(path, "base_model.txt"), "w") as f:
+        f.write(base)
+    if not os.path.exists(os.path.join(path, "spiece.model")):
+        from huggingface_hub import hf_hub_download
+        import shutil
+        src = os.path.join(base, "spiece.model") if os.path.isdir(base) else hf_hub_download(base, "spiece.model")
+        shutil.copy(src, os.path.join(path, "spiece.model"))
+
+
 def read_jsonl(paths):
     rows = []
     for p in paths:
@@ -109,14 +122,12 @@ def main():
                 log.flush()
                 if dl < best:
                     best = dl
-                    model.save_pretrained(os.path.join(args.out, "best"))
-                    tok.save_pretrained(os.path.join(args.out, "best"))
+                    save_checkpoint(model, tok, args.model, os.path.join(args.out, "best"))
                 model.train()
             if step >= total:
                 break
 
-    model.save_pretrained(os.path.join(args.out, "final"))
-    tok.save_pretrained(os.path.join(args.out, "final"))
+    save_checkpoint(model, tok, args.model, os.path.join(args.out, "final"))
     hours = (time.time() - start) / 3600
     summary = {
         "model": args.model, "train_examples": len(train), "steps": step, "epochs": args.epochs,

@@ -164,3 +164,19 @@ public class AnchoringTests
         Assert.Equal(["happily"], Coverage.Uncovered(ir, Tokenizer.Tokenize("The dog slept happily.")).ToList());
     }
 }
+
+public class AuxiliarySignatureTests
+{
+    const string PastSimple = "(assert (e1 sleep :tense past :subj (m1 dog :det the :adj old)))";
+
+    [Theory]
+    [InlineData(PastSimple, "The old dog slept.", true)]
+    [InlineData(PastSimple, "The old dog was sleeping.", false)]
+    [InlineData(PastSimple, "The old dog didn't sleep.", false)]
+    [InlineData("(assert (e1 come :tense fut :pol neg :subj (m1 I :pron)))", "I won't come.", true)]
+    [InlineData("(assert (e1 come :tense fut :pol neg :subj (m1 I :pron)))", "I will not come.", true)]
+    [InlineData("(assert (e1 leave :tense pres :aspect perf :subj (m1 she :pron :ref none)))", "She's left.", true)]
+    [InlineData("(assert (e1 leave :tense past :subj (m1 dog :poss (m2 Maria :propn))))", "Maria's dog left.", true)]
+    public void ComparesAuxiliariesIndependentlyOfTheModel(string ir, string text, bool ok) =>
+        Assert.Equal(ok, AuxiliarySignature.Mismatch(Linear.Parse(ir), text) is null);
+}

@@ -17,10 +17,10 @@ No money has been spent. Ava's code was not touched; this repository is separate
 | Synthetic data generator (S1) | `src/Language.DataGen` | 15k train / 750 dev / 1,000 test sentences; 40% Jabberwocky sentences (invented words); coreference labeled by agreement and binding rules; attachment and scope ambiguity flagged by surface rules |
 | UD → IR converter (S2, and reading baseline B0) | `UdConverter.cs` | Strict mode kept 868 EWT train + 185 dev sentences (~7%). It drops any sentence it cannot map completely, and any sentence with a 3rd-person pronoun, because UD has no reference annotation |
 | Persistent lexicon (SQLite) and vocabulary learner | `src/Language.Lexicon` | Records provenance and evidence status (explicit / hedged / reported / inferred); detects unknown words against a 370k public-domain word list; gives the model learned-word hints; picks learned terms when writing |
-| Neural engine (ONNX Runtime, C#) | `src/Language.Engine` | Beam search; the reader rejects invented content; the writer re-parses every candidate and falls back to the rules |
+| Neural engine (ONNX Runtime, C#) | `src/Language.Engine` | KV-cached beam search; the reader reads greedily first and rejects invented or omitted content; the writer checks every candidate against the IR (coverage, auxiliaries, re-parse) and falls back to the rules |
 | Evaluation harness | `src/Language.Eval` | Triple F1 with nodes aligned by anchor, feature accuracies, invented-content rate, coreference, ambiguity P/R, writing additions/omissions/forbidden words, round trip, vocabulary scenarios |
 | Training, export, baselines (Python, offline) | `training/` | `train.py`, `export_onnx.py`, `predict.py`, `baseline_prompted.py` (B1), `b0_stanza.py` (B0 reader) |
-| Unit tests | `tests/Language.Tests` | 64 tests, all passing |
+| Unit tests | `tests/Language.Tests` | 71 tests, all passing |
 
 ## Gold test set (drafted, **not yet human-verified**)
 
@@ -51,11 +51,32 @@ These numbers test the deterministic layers only. They are not evidence for the 
 | Synthetic generator self-check | 16,845 sampled, 0 rejected | Every training pair is valid, anchored and fully covered |
 | B0 rule realizer on T11 | 0% additions, 0% omissions, 0% forbidden words | The fallback writer is faithful, as designed. Fluency has not been judged yet. |
 | Vocabulary scenarios, oracle mode (gold IRs in, rule realizer out) | 20/20 scenarios, every metric 100% | The lexicon logic works when the reader is right. **Caveat:** the scenario author had read the learner code. |
-| CPU smoke fine-tune (Flan-T5-small, 300 steps) | see below | Pipeline check only, not a result |
+| Independent auxiliary check on the gold sentences themselves | 99.1% pass | Low false-alarm rate. The 4 misses are "going to" (IR v0 maps it to `fut`) and a "will" shared across coordinated clauses |
+| CPU smoke fine-tune (Flan-T5-small, 300 steps ≈ 0.15 epoch, 41 min) | dev loss 0.235 | Pipeline check only, not a result (see below) |
+
+### End-to-end smoke test (pipeline validation, not evidence)
+
+A Flan-T5-small model trained for 300 steps on CPU went through the whole path: train → export → C# engine.
+
+- **Export fidelity.**
+  - The fp32 ONNX output is identical to PyTorch, for both the full decoder and the KV-cached step decoder.
+  - The int8 export picks the same tokens 98–100% of the time. It leaves T5's `wo` projections and the LM head unquantized, because quantizing those layers lost 25–60% of argmax agreement.
+  - C# tokenization and greedy decoding reproduce Python token for token.
+- **The checks work as intended on a weak model.**
+  - Writing an IR for "the old dog slept…", the model's top candidate was "*was sleeping*". The model's own re-parse made the same mistake and accepted it, which is the circularity risk in practice. The model-independent auxiliary check then rejected it, rejected "sleeped" for omission, and accepted the faithful third candidate.
+  - When reading a definition, every candidate either dropped "enhanced" or was malformed. The engine returned no IR rather than an unfaithful one.
+- **Latency** on this 4-vCPU cloud container, int8 small model, per sentence:
+  - full-recompute decoder: about 2.5 s greedy;
+  - KV-cached greedy: **0.58 s p50**;
+  - KV-cached beam 4: 1.27 s.
+
+  The 300 ms target (DESIGN §6.4) is not met here. A desktop CPU will be faster, and an undertrained model also writes longer outputs, so this has to be re-measured on the real model at home before any judgment.
 
 ## Risks I can already see
 
 1. **Lexical and structural ambiguity are barely taught.** The synthetic data marks only attachment and scope ambiguity, so the model will probably flag few of T6's lexical and structural items. That is a gap in the data, not yet evidence of a limit of the approach.
 2. **The S2 natural data is small** (~1.1k sentences, not the ~3k planned) because the converter is strict. If F0 shows a large gap between synthetic and natural accuracy, loosening the converter is the cheapest fix.
 3. **The verifier uses the same model to re-parse its own output.** Errors can be correlated, so the lexical checks in `eval-write` stay independent of the model. An LLM-judge pass (optional, your API key) or a human look at about 100 outputs is still recommended.
-4. **Coreference policy is conservative by design.** For example, "Tom told Bill he was late" is marked ambiguous. A reader expecting resolution will see this as "unresolved"; under the design principle it is correct.
+4. **Latency may miss the 300 ms CPU target** (see the smoke test). Options if it does: run the small model, put a shorter IR serialization in the model target, or use ONNX Runtime's GPU provider.
+5. **Pronoun chains** ("She finished her homework") are not represented in v0. Both pronouns get `:ref none`.
+6. **Coreference policy is conservative by design.** For example, "Tom told Bill he was late" is marked ambiguous. A reader expecting resolution will see this as "unresolved"; under the design principle it is correct.

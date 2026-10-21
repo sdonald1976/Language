@@ -120,13 +120,13 @@ public static partial class Commands
         var outputs = Predictions(Required(args, "--pred"));
         var reparse = Opt(args, "--reparse") is { } r ? Predictions(r) : null;
         var (slices, items) = WriteEvaluator.Evaluate(gold, outputs, reparse);
-        Console.WriteLine($"{"slice",-24} {"n",4} {"added",6} {"forbid",6} {"omit",6} {"type",6} {"roundtripF1",11}");
+        Console.WriteLine($"{"slice",-24} {"n",4} {"added",6} {"forbid",6} {"omit",6} {"type",6} {"aux",6} {"roundtripF1",11}");
         foreach (var (name, s) in slices.OrderBy(k => k.Key == "all" ? "" : k.Key))
-            Console.WriteLine($"{name,-24} {s.Items,4} {F(s.HasAddition.Value),6} {F(s.HasForbidden.Value),6} {F(s.HasOmission.Value),6} {F(s.ActPreserved.Value),6} {F(s.Summary()["round_trip_triple_f1"]),11}");
+            Console.WriteLine($"{name,-24} {s.Items,4} {F(s.HasAddition.Value),6} {F(s.HasForbidden.Value),6} {F(s.HasOmission.Value),6} {F(s.ActPreserved.Value),6} {F(s.AuxPreserved.Value),6} {F(s.Summary()["round_trip_triple_f1"]),11}");
         var errorsPath = Opt(args, "--errors");
         if (errorsPath is not null)
-            File.WriteAllLines(errorsPath, items.Where(i => i.Additions.Count + i.Omissions.Count + i.Forbidden.Count > 0)
-                .Select(i => $"{i.Id}\t{i.Output}\tadded=[{string.Join(",", i.Additions)}] forbidden=[{string.Join(",", i.Forbidden)}] omitted=[{string.Join(",", i.Omissions)}]"));
+            File.WriteAllLines(errorsPath, items.Where(i => i.Additions.Count + i.Omissions.Count + i.Forbidden.Count > 0 || i.AuxMismatch is not null)
+                .Select(i => $"{i.Id}\t{i.Output}\tadded=[{string.Join(",", i.Additions)}] forbidden=[{string.Join(",", i.Forbidden)}] omitted=[{string.Join(",", i.Omissions)}] {i.AuxMismatch}"));
         Report(Opt(args, "--out"), new { slices = slices.ToDictionary(k => k.Key, k => k.Value.Summary()), items });
         return 0;
     }

@@ -55,7 +55,8 @@ python training/export_onnx.py --model runs/c1-base/best --out models/c1-base --
 python training/export_onnx.py --model runs/c2-small/best --out models/c2-small --int8
 ```
 
-The export checks itself: it prints whether the ONNX logits agree with PyTorch.
+The export checks itself. It prints the argmax agreement with PyTorch for fp32, int8, and the KV-cached step decoder.
+If int8 agrees less than 98% of the time, `engine.json` falls back to the fp32 files automatically.
 
 ## 4. Evaluate
 
