@@ -1,0 +1,8 @@
+# Training/export/baselines only. The engine itself runs in C# (.NET 8) with ONNX Runtime.
+torch>=2.3
+transformers>=4.44
+sentencepiece>=0.2
+accelerate>=0.33
+onnx>=1.16
+onnxruntime>=1.18
+stanza>=1.8   # only for baseline B0 (training/b0_stanza.py)

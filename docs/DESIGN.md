@@ -1,6 +1,6 @@
 # Experiment design: an English-only language engine
 
-**Status:** Design only. Nothing has been built or trained and no money has been spent. The next step needs approval (see §9).
+**Status:** Approved. Decisions: Python for training only; step 0 done (see STATUS.md); fine-tuning to run on your own GPU, with no cloud provider; LLM judge optional, on your PC; you verify the gold test set.
 **Scope:** This is an isolated experiment in this repository. It does not touch Ava's architecture, code or production pipeline.
 
 **Question:** Can we create a small, reusable English language engine that reads and writes language accurately while leaving reasoning, knowledge, personality and decisions to external systems?

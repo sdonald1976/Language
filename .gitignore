@@ -1,0 +1,15 @@
+bin/
+obj/
+*.user
+.vs/
+.vscode/
+__pycache__/
+*.pyc
+.venv*/
+data/ud-raw/
+runs/
+models/
+preds/
+reports/
+*.db
+data/synthetic/rejected.log
