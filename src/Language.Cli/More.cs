@@ -21,6 +21,7 @@ public static partial class Commands
         "run" => RunEngine(args),
         "engine-predict" => EnginePredict(args),
         "lexicon" => LexiconCmd(args),
+        "generate" => RawGenerate(args),
         "convert-ud" => ConvertUd(args),
         _ => Unknown(command),
     });
@@ -235,6 +236,17 @@ public static partial class Commands
         Jsonl.Write(outPath, lines);
         ms.Sort();
         if (ms.Count > 0) Console.WriteLine($"wrote {lines.Count} predictions; latency p50 {ms[ms.Count / 2]:0} ms, p95 {ms[(int)(ms.Count * 0.95)]:0} ms");
+        return 0;
+    }
+
+    /// <summary>Raw model call with no prefix and no checks, for parity tests against Python.</summary>
+    static int RawGenerate(string[] args)
+    {
+        using var model = new Seq2SeqModel(Required(args, "--model"));
+        var beams = int.Parse(Opt(args, "--beams", "4")!);
+        var input = string.Join(' ', args.SkipWhile(a => a != "--").Skip(1));
+        Console.WriteLine("ids: " + string.Join(",", model.Encode(input)));
+        foreach (var (text, score) in model.Generate(input, beams)) Console.WriteLine($"{score:0.000}\t{text}");
         return 0;
     }
 

@@ -2,6 +2,7 @@
 torch>=2.3
 transformers>=4.44
 sentencepiece>=0.2
+protobuf>=4.25
 accelerate>=0.33
 onnx>=1.16
 onnxruntime>=1.18
